@@ -1,0 +1,74 @@
+/* Swing-compatible subset of GitHub's light markdown theme.
+   Loaded by MainForm into the lesson JEditorPane's HTMLEditorKit stylesheet. */
+
+body {
+    color: #1f2328;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #1f2328;
+    font-weight: bold;
+}
+
+h1 {
+    font-size: 22pt;
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 4px;
+}
+
+h2 {
+    font-size: 18pt;
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 4px;
+}
+
+h3 {
+    font-size: 15pt;
+}
+
+h4, h5, h6 {
+    font-size: 13pt;
+}
+
+a {
+    color: #0969da;
+    text-decoration: underline;
+}
+
+blockquote {
+    color: #59636e;
+    border-left: 4px solid #d0d7de;
+    padding-left: 12px;
+    margin-left: 0px;
+}
+
+pre {
+    background-color: #f6f8fa;
+    border: 1px solid #d0d7de;
+    padding: 8px;
+}
+
+code, tt {
+    background-color: #f6f8fa;
+    padding: 1px 4px;
+}
+
+pre code {
+    background-color: transparent;
+    padding: 0px;
+    border: none;
+}
+
+table {
+    border: 1px solid #d0d7de;
+}
+
+th, td {
+    border: 1px solid #d0d7de;
+    padding: 4px 8px;
+}
+
+th {
+    background-color: #f6f8fa;
+    font-weight: bold;
+}

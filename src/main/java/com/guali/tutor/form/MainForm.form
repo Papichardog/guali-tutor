@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form xmlns="http://www.intellij.com/uidesigner/form/" version="1" bind-to-class="com.guali.tutor.form.MainForm">
+  <grid id="27dc6" binding="mainPanel" layout-manager="GridLayoutManager" row-count="3" column-count="3" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+    <margin top="0" left="0" bottom="0" right="0"/>
+    <constraints>
+      <xy x="20" y="20" width="500" height="400"/>
+    </constraints>
+    <properties/>
+    <border type="none"/>
+    <children>
+      <grid id="6be5e" class="javax.swing.JMenuBar" binding="barra" layout-manager="FlowLayout" hgap="5" vgap="5" flow-align="0">
+        <constraints>
+          <grid row="0" column="0" row-span="1" col-span="2" vsize-policy="3" hsize-policy="3" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <grid id="1ac68" class="javax.swing.JMenu" binding="lecciones" layout-manager="FlowLayout" hgap="5" vgap="5" flow-align="0">
+            <constraints/>
+            <properties>
+              <text value="Lecciones"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <component id="567bd" class="javax.swing.JMenuItem" binding="abrirLeccion">
+                <constraints/>
+                <properties>
+                  <text value="Abrir Lección"/>
+                </properties>
+              </component>
+              <component id="85abe" class="javax.swing.JMenuItem" binding="cerrarLeccion">
+                <constraints/>
+                <properties>
+                  <text value="Cerrar Lección"/>
+                </properties>
+              </component>
+            </children>
+          </grid>
+          <component id="d2bb" class="javax.swing.JMenuItem" binding="configuracion">
+            <constraints/>
+            <properties>
+              <text value="Configuración"/>
+            </properties>
+          </component>
+          <component id="dcade" class="javax.swing.JMenuItem" binding="historial">
+            <constraints/>
+            <properties>
+              <text value="Historial"/>
+            </properties>
+          </component>
+          <component id="b8cdd" class="javax.swing.JMenuItem" binding="ayuda">
+            <constraints/>
+            <properties>
+              <text value="Ayuda"/>
+            </properties>
+          </component>
+        </children>
+      </grid>
+      <hspacer id="74088">
+        <constraints>
+          <grid row="0" column="2" row-span="1" col-span="1" vsize-policy="1" hsize-policy="6" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+        </constraints>
+      </hspacer>
+      <grid id="27940" binding="leccionActivaPanel" layout-manager="GridLayoutManager" row-count="1" column-count="3" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+        <margin top="0" left="0" bottom="0" right="0"/>
+        <constraints>
+          <grid row="1" column="0" row-span="1" col-span="3" vsize-policy="0" hsize-policy="0" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
+        </constraints>
+        <properties/>
+        <border type="none"/>
+        <children>
+          <grid id="27941" layout-manager="FlowLayout" hgap="5" vgap="5" flow-align="0">
+            <constraints>
+              <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties/>
+            <border type="none"/>
+            <children>
+              <component id="f28da" class="javax.swing.JLabel" binding="leccionActivaString">
+                <constraints/>
+                <properties>
+                  <background color="-16579837"/>
+                  <foreground color="-1"/>
+                  <opaque value="true"/>
+                  <text value="  Lección Activa  "/>
+                </properties>
+              </component>
+              <vspacer id="d87e9">
+                <constraints/>
+              </vspacer>
+              <component id="1852b" class="javax.swing.JLabel" binding="leccionActivaTxt">
+                <constraints/>
+                <properties>
+                  <text value="Lección 1"/>
+                </properties>
+              </component>
+            </children>
+          </grid>
+          <hspacer id="27942">
+            <constraints>
+              <grid row="0" column="1" row-span="1" col-span="1" vsize-policy="1" hsize-policy="6" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+          </hspacer>
+          <grid id="27943" layout-manager="FlowLayout" hgap="5" vgap="5" flow-align="0">
+            <constraints>
+              <grid row="0" column="2" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="0" fill="0" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties/>
+            <border type="none"/>
+            <children>
+              <component id="27944" class="javax.swing.JButton" binding="btnZoomOut">
+                <constraints/>
+                <properties>
+                  <text value="A−"/>
+                </properties>
+              </component>
+              <component id="27945" class="javax.swing.JButton" binding="btnZoomIn">
+                <constraints/>
+                <properties>
+                  <text value="A+"/>
+                </properties>
+              </component>
+            </children>
+          </grid>
+        </children>
+      </grid>
+      <splitpane id="c0e5a" binding="splitContenidoConsola">
+        <constraints>
+          <grid row="2" column="0" row-span="1" col-span="3" vsize-policy="6" hsize-policy="3" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
+        </constraints>
+        <properties>
+          <resizeWeight value="1.0"/>
+        </properties>
+        <border type="none"/>
+        <children>
+          <splitpane id="d1e2f" binding="splitLeccionEditor">
+            <constraints>
+              <splitpane position="left"/>
+            </constraints>
+            <properties>
+              <dividerLocation value="430"/>
+              <resizeWeight value="0.0"/>
+            </properties>
+            <border type="none"/>
+            <children>
+              <grid id="75997" binding="imagenPanel" layout-manager="GridLayoutManager" row-count="1" column-count="1" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+                <margin top="0" left="0" bottom="0" right="0"/>
+                <constraints>
+                  <splitpane position="left"/>
+                </constraints>
+                <properties/>
+                <border type="none"/>
+                <children/>
+              </grid>
+              <grid id="a3b4c" binding="editorPlaceholder" layout-manager="GridLayoutManager" row-count="2" column-count="1" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+                <margin top="0" left="0" bottom="0" right="0"/>
+                <constraints>
+                  <splitpane position="right"/>
+                </constraints>
+                <properties/>
+                <border type="none"/>
+                <children>
+                  <grid id="e5f6a" binding="codigoEditorContainer" layout-manager="GridLayoutManager" row-count="1" column-count="1" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+                    <margin top="0" left="0" bottom="0" right="0"/>
+                    <constraints>
+                      <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="7" hsize-policy="7" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
+                    </constraints>
+                    <properties/>
+                    <border type="none"/>
+                    <children/>
+                  </grid>
+                  <grid id="a7b8c" layout-manager="FlowLayout" hgap="5" vgap="5" flow-align="0">
+                    <constraints>
+                      <grid row="1" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
+                    </constraints>
+                    <properties/>
+                    <border type="none"/>
+                    <children>
+                      <component id="b8c9d" class="javax.swing.JButton" binding="btnCompilar">
+                        <constraints/>
+                        <properties>
+                          <text value="Compilar"/>
+                        </properties>
+                      </component>
+                      <component id="c9d0e" class="javax.swing.JButton" binding="btnEjecutar">
+                        <constraints/>
+                        <properties>
+                          <text value="Ejecutar"/>
+                        </properties>
+                      </component>
+                    </children>
+                  </grid>
+                </children>
+              </grid>
+            </children>
+          </splitpane>
+          <scrollpane id="d0e1f" binding="consolaScrollPane">
+            <constraints>
+              <splitpane position="right"/>
+            </constraints>
+            <properties/>
+            <border type="none"/>
+            <children>
+              <component id="e1f2a" class="javax.swing.JTextArea" binding="consolaTexto">
+                <constraints/>
+                <properties>
+                  <editable value="false"/>
+                  <rows value="6"/>
+                </properties>
+              </component>
+            </children>
+          </scrollpane>
+        </children>
+      </splitpane>
+    </children>
+  </grid>
+</form>

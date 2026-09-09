@@ -1,0 +1,1 @@
+objetivo=COMPILAR_EXITOSO
