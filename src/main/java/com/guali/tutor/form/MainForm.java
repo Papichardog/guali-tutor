@@ -1,5 +1,9 @@
 package com.guali.tutor.form;
 
+import com.guali.tutor.model.EstadoHistorial;
+import com.guali.tutor.model.LeccionResumen;
+import com.guali.tutor.model.RegistroHistorial;
+
 import org.commonmark.Extension;
 import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.node.Node;
@@ -14,24 +18,31 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JViewport;
+import javax.swing.SwingConstants;
 import javax.swing.Timer;
 import javax.swing.event.HyperlinkEvent;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
 import javax.swing.text.html.StyleSheet;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Container;
 import java.awt.Desktop;
 import java.awt.Dimension;
@@ -40,15 +51,24 @@ import java.awt.Font;
 import java.awt.Insets;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 public class MainForm extends JFrame {
+
+    /** Formato del mockup del enunciado (p. ej. 15/05/2026 4:30:10 PM); el idioma fijo evita "p. m.". */
+    private static final DateTimeFormatter FORMATO_FECHA_HISTORIAL =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy h:mm:ss a", Locale.ENGLISH);
+    private static final Color COLOR_ESTADO_COMPLETADA = new Color(0x2E7D32);
+    private static final Color COLOR_ESTADO_PENDIENTE = new Color(0xC62828);
 
     private JMenuBar barra;
     private JMenu lecciones;
@@ -74,6 +94,9 @@ public class MainForm extends JFrame {
     private JPanel leccionActivaPanel;
     private JButton btnZoomOut;
     private JButton btnZoomIn;
+    private JMenuItem importarLeccionBD;
+    private JMenuItem seleccionarLeccionBD;
+    private JMenuItem eliminarLeccionBD;
     private final List<Extension> markdownExtensions = List.of(TablesExtension.create());
     private final Parser markdownParser = Parser.builder().extensions(markdownExtensions).build();
     private final HtmlRenderer markdownRenderer = HtmlRenderer.builder().extensions(markdownExtensions).build();
@@ -139,8 +162,25 @@ public class MainForm extends JFrame {
         imagenPanel.setLayout(new BorderLayout());
         imagenPanel.add(leccionMarkdownScrollPane, BorderLayout.CENTER);
 
+        agregarOpcionesLeccionesBD();
+
         pack();
         setLocationRelativeTo(null);
+    }
+
+    /**
+     * Agrega al menú "Lecciones" las opciones de gestión de lecciones en MariaDB.
+     * Se crean por código (igual que el editor y el panel markdown) para no
+     * modificar MainForm.form ni $$$setupUI$$$().
+     */
+    private void agregarOpcionesLeccionesBD() {
+        importarLeccionBD = new JMenuItem("Importar Lección a BD");
+        seleccionarLeccionBD = new JMenuItem("Seleccionar Lección de BD");
+        eliminarLeccionBD = new JMenuItem("Eliminar Lección de BD");
+        lecciones.addSeparator();
+        lecciones.add(importarLeccionBD);
+        lecciones.add(seleccionarLeccionBD);
+        lecciones.add(eliminarLeccionBD);
     }
 
     public void setBaseLeccion(URL base) {
@@ -254,6 +294,175 @@ public class MainForm extends JFrame {
         return resultado[0];
     }
 
+    /**
+     * Muestra un selector con las lecciones disponibles.
+     *
+     * @return el nombre de carpeta elegido, o {@code null} si el usuario cancela.
+     */
+    public String solicitarSeleccionLeccion(List<String> leccionesDisponibles) {
+        Object seleccion = JOptionPane.showInputDialog(
+                this,
+                "Seleccione una lección para abrir:",
+                "Abrir Lección",
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                leccionesDisponibles.toArray(),
+                leccionesDisponibles.get(0));
+        return seleccion != null ? seleccion.toString() : null;
+    }
+
+    /**
+     * Muestra un selector de carpetas para elegir la lección local a importar.
+     *
+     * @return la carpeta elegida, o {@code null} si el usuario cancela.
+     */
+    public File solicitarCarpetaLeccionLocal() {
+        JFileChooser selector = new JFileChooser();
+        selector.setDialogTitle("Seleccione la carpeta de la lección a importar");
+        selector.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        return selector.showOpenDialog(this) == JFileChooser.APPROVE_OPTION
+                ? selector.getSelectedFile()
+                : null;
+    }
+
+    /**
+     * Muestra un selector con las lecciones almacenadas en MariaDB. Se usa tanto
+     * para Seleccionar como para Eliminar (cambia solo el título).
+     *
+     * @return la lección elegida, o {@code null} si el usuario cancela.
+     */
+    public LeccionResumen solicitarSeleccionLeccionBD(List<LeccionResumen> disponibles, String titulo) {
+        Object seleccion = JOptionPane.showInputDialog(
+                this,
+                "Seleccione una lección:",
+                titulo,
+                JOptionPane.PLAIN_MESSAGE,
+                null,
+                disponibles.toArray(),
+                disponibles.get(0));
+        return (LeccionResumen) seleccion;
+    }
+
+    /**
+     * Pide confirmación (Sí/No) antes de eliminar una lección de la base de datos.
+     */
+    public boolean confirmarEliminacion(String nombreLeccion) {
+        int respuesta = JOptionPane.showConfirmDialog(
+                this,
+                "¿Eliminar la lección '" + nombreLeccion + "' de la base de datos?\n"
+                        + "Esta acción no se puede deshacer.",
+                "Eliminar Lección de BD",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        return respuesta == JOptionPane.YES_OPTION;
+    }
+
+    /**
+     * Muestra el Historial de Sesión: un diálogo modal con una tabla de solo lectura
+     * (Lección | Hora de apertura | Estado) y un botón Cerrar. Los registros llegan
+     * ya ordenados; la tabla los muestra tal cual.
+     */
+    public void mostrarHistorial(List<RegistroHistorial> registros) {
+        JTable tabla = crearTablaHistorial(registros);
+
+        JButton btnCerrar = new JButton("Cerrar");
+        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 12));
+        panelBoton.add(btnCerrar);
+
+        JPanel panelContenido = new JPanel(new BorderLayout());
+        panelContenido.setBorder(BorderFactory.createEmptyBorder(12, 12, 0, 12));
+        panelContenido.add(new JScrollPane(tabla), BorderLayout.CENTER);
+        panelContenido.add(panelBoton, BorderLayout.SOUTH);
+
+        JDialog dialogo = new JDialog(this, "Historial de Sesión", true);
+        dialogo.setContentPane(panelContenido);
+        btnCerrar.addActionListener(e -> dialogo.dispose());
+        dialogo.getRootPane().setDefaultButton(btnCerrar);
+        dialogo.pack();
+        dialogo.setLocationRelativeTo(this);
+        dialogo.setVisible(true);
+    }
+
+    /**
+     * Muestra la ayuda de Guali Tutor: un diálogo modal de solo lectura con una
+     * breve explicación de cada sección de la aplicación. Contenido estático
+     * (HTML_AYUDA), sin depender de datos externos.
+     */
+    public void mostrarAyuda() {
+        JEditorPane contenido = new JEditorPane("text/html", HTML_AYUDA);
+        contenido.setEditable(false);
+        contenido.setCaretPosition(0);
+
+        JScrollPane scroll = new JScrollPane(contenido);
+        scroll.setPreferredSize(new Dimension(480, 420));
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+
+        JButton btnCerrar = new JButton("Cerrar");
+        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 12));
+        panelBoton.add(btnCerrar);
+
+        JPanel panelContenido = new JPanel(new BorderLayout());
+        panelContenido.setBorder(BorderFactory.createEmptyBorder(12, 12, 0, 12));
+        panelContenido.add(scroll, BorderLayout.CENTER);
+        panelContenido.add(panelBoton, BorderLayout.SOUTH);
+
+        JDialog dialogo = new JDialog(this, "Ayuda — Guali Tutor", true);
+        dialogo.setContentPane(panelContenido);
+        btnCerrar.addActionListener(e -> dialogo.dispose());
+        dialogo.getRootPane().setDefaultButton(btnCerrar);
+        dialogo.pack();
+        dialogo.setLocationRelativeTo(this);
+        dialogo.setVisible(true);
+    }
+
+    private static JTable crearTablaHistorial(List<RegistroHistorial> registros) {
+        DefaultTableModel modelo = new DefaultTableModel(new String[]{"Lección", "Hora de apertura", "Estado"}, 0) {
+            @Override
+            public boolean isCellEditable(int fila, int columna) {
+                return false;
+            }
+        };
+        for (RegistroHistorial registro : registros) {
+            modelo.addRow(new Object[]{
+                    registro.nombreLeccion(),
+                    registro.horaApertura().format(FORMATO_FECHA_HISTORIAL),
+                    registro.estado().getTexto()
+            });
+        }
+
+        JTable tabla = new JTable(modelo);
+        tabla.setRowHeight(24);
+        tabla.setFillsViewportHeight(true);
+        tabla.getTableHeader().setReorderingAllowed(false);
+        tabla.setPreferredScrollableViewportSize(new Dimension(640, 312));
+        tabla.getColumnModel().getColumn(0).setPreferredWidth(320);
+        tabla.getColumnModel().getColumn(1).setPreferredWidth(200);
+        tabla.getColumnModel().getColumn(2).setPreferredWidth(120);
+        tabla.getColumnModel().getColumn(2).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable t, Object valor, boolean seleccionada,
+                                                           boolean conFoco, int fila, int columna) {
+                JLabel etiqueta = (JLabel) super.getTableCellRendererComponent(
+                        t, valor, seleccionada, conFoco, fila, columna);
+                etiqueta.setHorizontalAlignment(SwingConstants.CENTER);
+                if (!seleccionada) {
+                    etiqueta.setForeground(EstadoHistorial.COMPLETADA.getTexto().equals(valor)
+                            ? COLOR_ESTADO_COMPLETADA
+                            : COLOR_ESTADO_PENDIENTE);
+                }
+                return etiqueta;
+            }
+        });
+        return tabla;
+    }
+
+    /**
+     * Actualiza el nombre mostrado en el encabezado de "Lección Activa".
+     */
+    public void setLeccionActivaTexto(String texto) {
+        leccionActivaTxt.setText(texto);
+    }
+
     private void aplicarEstiloMarkdown(StyleSheet hojaEstilos, float tamanoBase) {
         hojaEstilos.addRule("body, p, li { font-family: sans-serif; font-size: " + (int) tamanoBase + "pt; }");
         hojaEstilos.addRule("pre, code, tt { font-family: monospace; font-size: " + (int) (tamanoBase - 1) + "pt; }");
@@ -283,6 +492,18 @@ public class MainForm extends JFrame {
         return cerrarLeccion;
     }
 
+    public JMenuItem getImportarLeccionBD() {
+        return importarLeccionBD;
+    }
+
+    public JMenuItem getSeleccionarLeccionBD() {
+        return seleccionarLeccionBD;
+    }
+
+    public JMenuItem getEliminarLeccionBD() {
+        return eliminarLeccionBD;
+    }
+
     public JMenuItem getConfiguracion() {
         return configuracion;
     }
@@ -303,15 +524,22 @@ public class MainForm extends JFrame {
         return btnEjecutar;
     }
 
+    /**
+     * @return el código Java escrito actualmente en el editor.
+     */
+    public String getCodigoFuente() {
+        return codigoEditor.getText();
+    }
+
     {
 // GUI initializer generated by IntelliJ IDEA GUI Designer
-// >>> IMPORTANT!! <<<
+// >>> IMPORTANT!! <
 // DO NOT EDIT OR ADD ANY CODE HERE!
         $$$setupUI$$$();
     }
 
     /** Method generated by IntelliJ IDEA GUI Designer
-     * >>> IMPORTANT!! <<<
+     * >>> IMPORTANT!! <
      * DO NOT edit this method OR call it in your code!
      * @noinspection ALL
      */
@@ -445,5 +673,49 @@ public class MainForm extends JFrame {
     public JComponent $$$getRootComponent$$$() {
         return mainPanel;
     }
+    /** Contenido estático del diálogo de Ayuda; autocontenido (sin depender de leccion-markdown.css). */
+    private static final String HTML_AYUDA = """
+            <html>
+              <head>
+                <style>
+                  body { font-family: sans-serif; font-size: 12px; margin: 4px 10px; }
+                  h1 { font-size: 15px; margin: 0 0 10px 0; }
+                  h2 { font-size: 13px; margin: 14px 0 4px 0; }
+                  ul { margin: 2px 0 0 0; padding-left: 18px; }
+                  li { margin: 2px 0; }
+                  .pie { margin-top: 18px; padding-top: 8px; border-top: 1px solid #999999; color: #555555; font-size: 11px; }
+                </style>
+              </head>
+              <body>
+                <h1>Ayuda — Guali Tutor</h1>
 
+                <h2>Configuración</h2>
+                <ul>
+                  <li>Configura el JDK que utilizará Guali Tutor.</li>
+                  <li>Compilar y Ejecutar permanecerán deshabilitados si no existe un JDK válido.</li>
+                </ul>
+
+                <h2>Lecciones</h2>
+                <ul>
+                  <li>Abre una lección disponible.</li>
+                  <li>Importa, selecciona y elimina lecciones desde MariaDB.</li>
+                </ul>
+
+                <h2>Editor</h2>
+                <ul>
+                  <li>Escribe el código Java.</li>
+                  <li><b>Compilar</b> intenta compilar el código usando el JDK configurado.</li>
+                  <li><b>Ejecutar</b> ejecuta el programa después de una compilación exitosa.</li>
+                </ul>
+
+                <h2>Historial</h2>
+                <ul>
+                  <li>Consulta las aperturas de lecciones.</li>
+                  <li>Ve fecha/hora y estado <i>Pendiente</i> o <i>Completada</i>.</li>
+                </ul>
+
+                <p class="pie">Guali Tutor — Programación II<br>Java 25 · MariaDB · guali-dev</p>
+              </body>
+            </html>
+            """;
 }
