@@ -31,6 +31,9 @@ public class MainController {
     private static final float TAMANO_FUENTE_MAX = 28f;
     private static final String LECCION_INICIAL = "leccion-01";
 
+    /** Con una raíz grande (p. ej. Descargas) se ignorarían muchas carpetas: la consola muestra solo las primeras. */
+    private static final int MAX_CARPETAS_IGNORADAS_EN_CONSOLA = 5;
+
     private final MainForm view;
     private final ConexionBD conexionBD = new ConexionBD();
     private final ConfiguracionDAO configuracionDAO = new ConfiguracionDAO(conexionBD);
@@ -48,19 +51,28 @@ public class MainController {
     /** Resultado de la última compilación; null si todavía no se ha compilado. */
     private CompileResult ultimoResultadoCompilacion;
 
+    /** Carpeta raíz de lecciones locales ya validada (isDirectory()); null si no hay ninguna configurada o válida. */
+    private File carpetaRaizLecciones;
+
+    /**
+     * Carpeta que el usuario eligió mantener como raíz aunque parezca una lección
+     * individual ("Usar esta de todos modos"); evita volver a preguntarle en cada
+     * Abrir Lección durante la sesión.
+     */
+    private File raizSospechosaAceptada;
+
     public MainController(MainForm view) {
         this.view = view;
         wireListeners();
-        // La precarga inicial no es una apertura explícita del usuario, así que no
-        // debe registrarse en el historial (ver abrirLeccionPorNombre).
-        abrirLeccionPorNombre(LECCION_INICIAL, false);
+        inicializarCarpetaRaizLecciones();
+        precargarLeccionInicial();
         probarConexionBD();
         inicializarConfiguracionJdk();
     }
 
     private void wireListeners() {
         view.getAbrirLeccion().addActionListener(e -> abrirLeccion());
-        view.getCerrarLeccion().addActionListener(e -> logAccionMenu("Cerrar Lección"));
+        view.getCerrarLeccion().addActionListener(e -> cerrarLeccion());
         view.getImportarLeccionBD().addActionListener(e -> importarLeccion());
         view.getSeleccionarLeccionBD().addActionListener(e -> seleccionarLeccionDesdeBD());
         view.getEliminarLeccionBD().addActionListener(e -> eliminarLeccionDesdeBD());
@@ -76,28 +88,157 @@ public class MainController {
     }
 
     // ------------------------------------------------------------------
-    // Abrir Lección (lecciones empaquetadas como recursos)
+    // Abrir Lección (carpeta raíz externa configurable)
     // ------------------------------------------------------------------
 
     /**
-     * Lista las lecciones disponibles y, si hay al menos una, deja que el
-     * usuario elija cuál abrir.
+     * Al arrancar, intenta cachear la carpeta raíz de lecciones desde MariaDB.
+     * Es solo lectura pasiva: si no hay ruta guardada, o dejó de ser válida, no
+     * abre ningún diálogo — solo lo informa en consola y la app sigue usable.
+     */
+    private void inicializarCarpetaRaizLecciones() {
+        String rutaGuardada;
+        try {
+            rutaGuardada = configuracionDAO.obtenerRutaLecciones();
+        } catch (SQLException e) {
+            logConsola("[Lección] No se pudo leer la carpeta raíz de lecciones: " + e.getMessage());
+            return;
+        }
+        if (rutaGuardada == null || rutaGuardada.isBlank()) {
+            logConsola("[Lección] No hay una carpeta raíz de lecciones configurada todavía. "
+                    + "Podés elegirla desde Abrir Lección o desde el menú Configuración.");
+            return;
+        }
+        File carpeta = new File(rutaGuardada);
+        if (!carpeta.isDirectory()) {
+            logConsola("[Lección] La carpeta raíz de lecciones configurada ya no existe o no es válida: "
+                    + rutaGuardada + ". Podés volver a configurarla desde Abrir Lección o Configuración.");
+            return;
+        }
+        carpetaRaizLecciones = carpeta;
+        logConsola("[Lección] Carpeta raíz de lecciones: " + carpeta.getAbsolutePath());
+        if (leccionService.pareceLeccionIndividualEnVezDeRaiz(carpeta)) {
+            logConsola("[Lección] Aviso: la carpeta raíz configurada parece ser una lección individual, no la "
+                    + "carpeta que contiene las lecciones. Se te ofrecerá corregirlo al usar Abrir Lección.");
+        }
+    }
+
+    /**
+     * Precarga "leccion-01" desde la raíz configurada, si existe y es válida.
+     * Nunca crea una fila de historial (mismo criterio que antes de este
+     * cambio): es una carga automática, no una apertura explícita del usuario.
+     */
+    private void precargarLeccionInicial() {
+        if (carpetaRaizLecciones == null) {
+            return; // ya se informó el motivo en inicializarCarpetaRaizLecciones()
+        }
+        File carpetaLeccionInicial = new File(carpetaRaizLecciones, LECCION_INICIAL);
+        try {
+            Leccion leccion = leccionService.cargarLeccionDesdeCarpeta(carpetaLeccionInicial);
+            mostrarLeccion(leccion, false);
+        } catch (IOException e) {
+            logConsola("[Lección] No se encontró una '" + LECCION_INICIAL + "' válida en la carpeta raíz "
+                    + "configurada; la aplicación inicia sin ninguna lección abierta. Motivo: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Devuelve la carpeta raíz de lecciones ya configurada y válida. Si no hay
+     * ninguna (o dejó de ser válida), la solicita al usuario y, si elige una,
+     * la valida y persiste. Si la raíz configurada parece una lección individual
+     * (error típico), ofrece corregirla antes de usarla.
+     *
+     * @return la carpeta raíz utilizable, o {@code null} si no hay ninguna
+     *         (el usuario canceló, o la ruta elegida no era una carpeta válida).
+     */
+    private File obtenerOSolicitarCarpetaRaizLecciones() {
+        if (carpetaRaizLecciones != null && carpetaRaizLecciones.isDirectory()) {
+            File raiz = resolverRaizSospechosa(carpetaRaizLecciones);
+            if (raiz == null) {
+                return null; // el usuario canceló
+            }
+            if (!raiz.equals(carpetaRaizLecciones)) {
+                persistirRaizLecciones(raiz); // eligió usar la carpeta padre
+            }
+            return carpetaRaizLecciones;
+        }
+        if (carpetaRaizLecciones != null) {
+            // Estaba cacheada pero ya no es válida (se movió/borró en disco).
+            logConsola("[Lección] La carpeta raíz de lecciones ya no existe: "
+                    + carpetaRaizLecciones.getAbsolutePath() + ". Selecciona una nueva.");
+            carpetaRaizLecciones = null;
+        }
+
+        File carpeta = view.solicitarCarpetaRaizLecciones();
+        if (carpeta == null) {
+            return null; // el usuario canceló
+        }
+        guardarRutaLeccionesRaiz(carpeta);
+        return carpetaRaizLecciones;
+    }
+
+    /**
+     * Si la carpeta elegida como raíz parece ser una lección individual (tiene
+     * config.txt y un .md pero ninguna lección dentro), le pregunta al usuario
+     * qué hacer: usar la carpeta padre (lo habitual), usar esa carpeta de todos
+     * modos, o cancelar. Para cualquier otra carpeta devuelve la misma sin preguntar.
+     *
+     * @return la carpeta a usar como raíz, o {@code null} si el usuario cancela.
+     */
+    private File resolverRaizSospechosa(File elegida) {
+        if (elegida.equals(raizSospechosaAceptada)
+                || !leccionService.pareceLeccionIndividualEnVezDeRaiz(elegida)) {
+            return elegida;
+        }
+
+        File padre = elegida.getParentFile();
+        String mensaje = "La carpeta seleccionada ('" + elegida.getName() + "') parece ser una lección "
+                + "individual, no la carpeta que contiene las lecciones.\n"
+                + "La carpeta raíz debe tener una subcarpeta por cada lección.";
+        Object[] opciones;
+        if (padre != null) {
+            mensaje += "\n\nCarpeta padre sugerida:\n" + padre.getAbsolutePath();
+            opciones = new Object[]{"Usar la carpeta padre", "Usar esta de todos modos", "Cancelar"};
+        } else {
+            opciones = new Object[]{"Usar esta de todos modos", "Cancelar"};
+        }
+
+        int seleccion = JOptionPane.showOptionDialog(view, mensaje, "Carpeta raíz de lecciones",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, opciones, opciones[0]);
+
+        String elegidaPorUsuario = (seleccion >= 0 && seleccion < opciones.length)
+                ? (String) opciones[seleccion]
+                : "Cancelar"; // diálogo cerrado
+        return switch (elegidaPorUsuario) {
+            case "Usar la carpeta padre" -> padre;
+            case "Usar esta de todos modos" -> {
+                raizSospechosaAceptada = elegida;
+                yield elegida;
+            }
+            default -> null;
+        };
+    }
+
+    /**
+     * Resuelve la raíz configurada (pidiéndola si hace falta), lista sus
+     * subcarpetas válidas, registra en consola las que se ignoraron y por qué
+     * (las primeras; ver MAX_CARPETAS_IGNORADAS_EN_CONSOLA), y deja elegir una
+     * para abrirla.
      */
     private void abrirLeccion() {
-        List<String> disponibles;
-        try {
-            disponibles = leccionService.listarLeccionesDisponibles();
-        } catch (IOException e) {
-            String mensaje = "No se pudieron listar las lecciones disponibles: " + e.getMessage();
-            logConsola("[Lección] " + mensaje);
-            JOptionPane.showMessageDialog(view, mensaje, "Error", JOptionPane.ERROR_MESSAGE);
+        File raiz = obtenerOSolicitarCarpetaRaizLecciones();
+        if (raiz == null) {
             return;
         }
 
+        LeccionService.ResultadoListadoLocal resultado = leccionService.listarLeccionesDisponibles(raiz);
+        logCarpetasIgnoradas(resultado.ignoradas());
+
+        List<String> disponibles = resultado.validas();
         if (disponibles.isEmpty()) {
-            logConsola("[Lección] No se encontraron lecciones en /lecciones/.");
+            logConsola("[Lección] No se encontraron lecciones válidas en: " + raiz.getAbsolutePath());
             JOptionPane.showMessageDialog(view,
-                    "No se encontraron lecciones disponibles.",
+                    "No se encontraron lecciones válidas en:\n" + raiz.getAbsolutePath(),
                     "Sin lecciones",
                     JOptionPane.WARNING_MESSAGE);
             return;
@@ -106,24 +247,29 @@ public class MainController {
         String nombreSeleccionado = view.solicitarSeleccionLeccion(disponibles);
         if (nombreSeleccionado != null) {
             // Acción explícita del usuario: sí se registra en el historial.
-            abrirLeccionPorNombre(nombreSeleccionado, true);
+            abrirLeccionLocalPorNombre(raiz, nombreSeleccionado, true);
+        }
+    }
+
+    private void logCarpetasIgnoradas(List<LeccionService.CarpetaLeccionInvalida> ignoradas) {
+        int mostradas = Math.min(ignoradas.size(), MAX_CARPETAS_IGNORADAS_EN_CONSOLA);
+        for (int i = 0; i < mostradas; i++) {
+            LeccionService.CarpetaLeccionInvalida invalida = ignoradas.get(i);
+            logConsola("[Lección] Carpeta '" + invalida.nombreCarpeta() + "' ignorada: " + invalida.motivo());
+        }
+        if (ignoradas.size() > mostradas) {
+            logConsola("[Lección] ... y " + (ignoradas.size() - mostradas) + " carpeta(s) más ignorada(s).");
         }
     }
 
     /**
-     * Carga una lección por nombre de carpeta y la muestra. Si falta
-     * leccion.md/config.txt o config.txt es inválido, avisa y no cambia la
-     * lección que estuviera abierta.
-     *
-     * @param registrarEnHistorial si esta apertura debe crear una fila en el
-     *                             historial. Es {@code false} únicamente para la
-     *                             precarga automática del constructor; cualquier
-     *                             apertura pedida por el usuario (menú Abrir
-     *                             Lección) pasa {@code true}.
+     * Carga una lección por nombre de subcarpeta dentro de {@code raiz} y la
+     * muestra. Si falta el markdown/config.txt o el objetivo no es válido,
+     * avisa y no cambia la lección que estuviera abierta.
      */
-    private void abrirLeccionPorNombre(String nombreLeccion, boolean registrarEnHistorial) {
+    private void abrirLeccionLocalPorNombre(File raiz, String nombreLeccion, boolean registrarEnHistorial) {
         try {
-            Leccion leccion = leccionService.cargarLeccion(nombreLeccion);
+            Leccion leccion = leccionService.cargarLeccionDesdeCarpeta(new File(raiz, nombreLeccion));
             mostrarLeccion(leccion, registrarEnHistorial);
         } catch (IOException e) {
             String mensaje = "No se pudo abrir la lección '" + nombreLeccion + "': " + e.getMessage();
@@ -132,7 +278,7 @@ public class MainController {
         }
     }
 
-    /** Lección local (recursos): no existe en la tabla `lecciones`, así que su leccion_id es null. */
+    /** Lección local (carpeta externa): no existe en la tabla `lecciones`, así que su leccion_id es null. */
     private void mostrarLeccion(Leccion leccion, boolean registrarEnHistorial) {
         mostrarContenidoLeccion(leccion.nombre(), leccion.contenidoMarkdown(), leccion.objetivo(),
                 leccion.carpetaBase(), null, registrarEnHistorial);
@@ -140,14 +286,14 @@ public class MainController {
 
     /**
      * Muestra el contenido de una lección en la interfaz, sin importar de dónde
-     * vino (recursos o MariaDB). {@code carpetaBase} es la carpeta contra la que
-     * se resuelven las imágenes; es {@code null} para lecciones de BD (que no
-     * guardan imágenes), y en ese caso se limpia la base anterior para que no se
-     * resuelvan imágenes contra la carpeta de la lección previa. {@code leccionId}
-     * es el id en la tabla `lecciones`, o {@code null} para lecciones locales.
+     * vino (carpeta local o MariaDB), y registra la apertura en el historial.
+     * {@code carpetaBase} es la carpeta contra la que se resuelven las
+     * imágenes; es {@code null} para lecciones de BD (que no guardan imágenes),
+     * y en ese caso se limpia la base anterior para que no se resuelvan
+     * imágenes contra la carpeta de la lección previa. {@code leccionId} es el
+     * id en la tabla `lecciones`, o {@code null} para lecciones locales.
      * {@code registrarEnHistorial} distingue una apertura explícita del usuario
-     * (crea fila) de la precarga automática al arrancar (no crea fila; ver
-     * HistorialService.descartarIntentoActivo).
+     * (crea fila) de la precarga automática al arrancar (no crea fila).
      */
     private void mostrarContenidoLeccion(String nombre, String contenidoMarkdown, String objetivo,
                                          URL carpetaBase, Integer leccionId, boolean registrarEnHistorial) {
@@ -172,14 +318,28 @@ public class MainController {
         }
     }
 
+    /**
+     * Cierra la lección activa: limpia la vista (panel, editor, encabezado),
+     * invalida cualquier compilación previa y deshabilita Ejecutar, y descarta
+     * el intento activo en memoria. No borra ni crea filas en `historial`: la
+     * fila Pendiente que ya existía (si la hubo) permanece intacta.
+     */
+    private void cerrarLeccion() {
+        view.limpiarLeccionActiva();
+        ultimoResultadoCompilacion = null;
+        view.getBtnEjecutar().setEnabled(false);
+        historialService.descartarIntentoActivo();
+        logConsola("[Lección] Lección cerrada.");
+    }
+
     // ------------------------------------------------------------------
     // Gestión de lecciones en MariaDB (Importar / Seleccionar / Eliminar)
     // ------------------------------------------------------------------
 
     /**
-     * Lee una carpeta local de lección y la guarda en MariaDB. No abre la
-     * lección importada: importar y mostrar son acciones separadas. Si ya existe
-     * una lección con ese nombre, no sobrescribe nada y avisa.
+     * Lee una carpeta local de lección y la guarda en MariaDB. Sigue siendo
+     * independiente de la raíz configurable: el usuario elige manualmente la
+     * carpeta de una única lección, cada vez. No abre la lección importada.
      */
     private void importarLeccion() {
         File carpeta = view.solicitarCarpetaLeccionLocal();
@@ -362,19 +522,42 @@ public class MainController {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Ayuda
+    // ------------------------------------------------------------------
+
     /** Muestra la ayuda de la aplicación. Contenido estático: no depende de la BD. */
     private void mostrarAyuda() {
         view.mostrarAyuda();
     }
 
     // ------------------------------------------------------------------
-    // Configuración del JDK
+    // Configuración (JDK y carpeta raíz de lecciones)
     // ------------------------------------------------------------------
 
+    /**
+     * El menú "Configuración" cubre dos configuraciones independientes; primero
+     * se pregunta cuál, y según la respuesta se reutiliza el flujo existente de
+     * cada una.
+     */
     private void abrirConfiguracion() {
-        String ubicacionJdk = view.solicitarUbicacionJdk();
-        if (ubicacionJdk != null) {
-            guardarRutaJdk(ubicacionJdk);
+        MainForm.TipoConfiguracion tipo = view.solicitarTipoConfiguracion();
+        if (tipo == null) {
+            return;
+        }
+        switch (tipo) {
+            case JDK -> {
+                String ubicacionJdk = view.solicitarUbicacionJdk();
+                if (ubicacionJdk != null) {
+                    guardarRutaJdk(ubicacionJdk);
+                }
+            }
+            case LECCIONES -> {
+                File carpeta = view.solicitarCarpetaRaizLecciones();
+                if (carpeta != null) {
+                    guardarRutaLeccionesRaiz(carpeta);
+                }
+            }
         }
     }
 
@@ -387,6 +570,36 @@ public class MainController {
             return;
         }
         aplicarEstadoJdk(rutaJdk);
+    }
+
+    /**
+     * Valida la carpeta elegida como raíz de lecciones (desde Configuración o
+     * desde Abrir Lección) y, si es utilizable, la persiste y cachea. Si parece
+     * una lección individual, antes ofrece corregirla (ver resolverRaizSospechosa).
+     */
+    private void guardarRutaLeccionesRaiz(File elegida) {
+        if (!elegida.isDirectory()) {
+            notificar("[Lección]", "La ruta seleccionada no es una carpeta válida.",
+                    "Carpeta inválida", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        File raiz = resolverRaizSospechosa(elegida);
+        if (raiz == null) {
+            logConsola("[Lección] No se cambió la carpeta raíz de lecciones.");
+            return;
+        }
+        persistirRaizLecciones(raiz);
+    }
+
+    /** Guarda la carpeta raíz en MariaDB y la deja cacheada; ante un error de BD solo lo informa en consola. */
+    private void persistirRaizLecciones(File carpeta) {
+        try {
+            configuracionDAO.guardarRutaLecciones(carpeta.getAbsolutePath());
+            carpetaRaizLecciones = carpeta;
+            logConsola("[Lección] Carpeta raíz de lecciones guardada: " + carpeta.getAbsolutePath());
+        } catch (SQLException e) {
+            logConsola("[Lección] No se pudo guardar la carpeta raíz de lecciones: " + e.getMessage());
+        }
     }
 
     private void inicializarConfiguracionJdk() {
@@ -491,10 +704,6 @@ public class MainController {
         } catch (SQLException e) {
             logConsola("[BD] No se pudo conectar a MariaDB: " + e.getMessage());
         }
-    }
-
-    private void logAccionMenu(String opcion) {
-        logConsola("[Menú] '" + opcion + "' seleccionado — aquí va la lógica del programa.");
     }
 
     private void logConsola(String mensaje) {

@@ -69,6 +69,53 @@ public class MainForm extends JFrame {
             DateTimeFormatter.ofPattern("dd/MM/yyyy h:mm:ss a", Locale.ENGLISH);
     private static final Color COLOR_ESTADO_COMPLETADA = new Color(0x2E7D32);
     private static final Color COLOR_ESTADO_PENDIENTE = new Color(0xC62828);
+    private static final String TEXTO_SIN_LECCION_ACTIVA = "Ninguna lección abierta";
+
+    /** Contenido estático del diálogo de Ayuda; autocontenido (sin depender de leccion-markdown.css). */
+    private static final String HTML_AYUDA = """
+            <html>
+              <head>
+                <style>
+                  body { font-family: sans-serif; font-size: 12px; margin: 4px 10px; }
+                  h1 { font-size: 15px; margin: 0 0 10px 0; }
+                  h2 { font-size: 13px; margin: 14px 0 4px 0; }
+                  ul { margin: 2px 0 0 0; padding-left: 18px; }
+                  li { margin: 2px 0; }
+                  .pie { margin-top: 18px; padding-top: 8px; border-top: 1px solid #999999; color: #555555; font-size: 11px; }
+                </style>
+              </head>
+              <body>
+                <h1>Ayuda — Guali Tutor</h1>
+
+                <h2>Configuración</h2>
+                <ul>
+                  <li>Configura el JDK que utilizará Guali Tutor.</li>
+                  <li>Compilar y Ejecutar permanecerán deshabilitados si no existe un JDK válido.</li>
+                </ul>
+
+                <h2>Lecciones</h2>
+                <ul>
+                  <li>Abre una lección disponible.</li>
+                  <li>Importa, selecciona y elimina lecciones desde MariaDB.</li>
+                </ul>
+
+                <h2>Editor</h2>
+                <ul>
+                  <li>Escribe el código Java.</li>
+                  <li><b>Compilar</b> intenta compilar el código usando el JDK configurado.</li>
+                  <li><b>Ejecutar</b> ejecuta el programa después de una compilación exitosa.</li>
+                </ul>
+
+                <h2>Historial</h2>
+                <ul>
+                  <li>Consulta las aperturas de lecciones.</li>
+                  <li>Ve fecha/hora y estado <i>Pendiente</i> o <i>Completada</i>.</li>
+                </ul>
+
+                <p class="pie">Guali Tutor — Programación II<br>Java 25 · MariaDB · guali-dev</p>
+              </body>
+            </html>
+            """;
 
     private JMenuBar barra;
     private JMenu lecciones;
@@ -255,6 +302,37 @@ public class MainForm extends JFrame {
     }
 
     /**
+     * A qué configuración apunta el diálogo genérico de "Configuración" del menú.
+     */
+    public enum TipoConfiguracion { JDK, LECCIONES }
+
+    /**
+     * El menú "Configuración" es un único JMenuItem (no un submenú), así que
+     * antes de abrir el diálogo correspondiente se pregunta cuál de las dos
+     * configuraciones quiere tocar el usuario. Evita agregar un submenú, lo que
+     * obligaría a tocar $$$setupUI$$$().
+     *
+     * @return el tipo elegido, o {@code null} si el usuario cancela.
+     */
+    public TipoConfiguracion solicitarTipoConfiguracion() {
+        Object[] opciones = {"JDK", "Carpeta de Lecciones"};
+        int seleccion = JOptionPane.showOptionDialog(
+                this,
+                "¿Qué desea configurar?",
+                "Configuración",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                opciones,
+                opciones[0]);
+        return switch (seleccion) {
+            case 0 -> TipoConfiguracion.JDK;
+            case 1 -> TipoConfiguracion.LECCIONES;
+            default -> null;
+        };
+    }
+
+    /**
      * Muestra un diálogo modal para capturar la ubicación del JDK.
      *
      * @return la ruta ingresada si el usuario presiona "Aceptar", o {@code null} si
@@ -326,6 +404,21 @@ public class MainForm extends JFrame {
     }
 
     /**
+     * Muestra un selector de carpetas para elegir la carpeta raíz de lecciones
+     * locales (la que contiene una subcarpeta por cada lección).
+     *
+     * @return la carpeta elegida, o {@code null} si el usuario cancela.
+     */
+    public File solicitarCarpetaRaizLecciones() {
+        JFileChooser selector = new JFileChooser();
+        selector.setDialogTitle("Seleccione la carpeta raíz de lecciones");
+        selector.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        return selector.showOpenDialog(this) == JFileChooser.APPROVE_OPTION
+                ? selector.getSelectedFile()
+                : null;
+    }
+
+    /**
      * Muestra un selector con las lecciones almacenadas en MariaDB. Se usa tanto
      * para Seleccionar como para Eliminar (cambia solo el título).
      *
@@ -383,38 +476,6 @@ public class MainForm extends JFrame {
         dialogo.setVisible(true);
     }
 
-    /**
-     * Muestra la ayuda de Guali Tutor: un diálogo modal de solo lectura con una
-     * breve explicación de cada sección de la aplicación. Contenido estático
-     * (HTML_AYUDA), sin depender de datos externos.
-     */
-    public void mostrarAyuda() {
-        JEditorPane contenido = new JEditorPane("text/html", HTML_AYUDA);
-        contenido.setEditable(false);
-        contenido.setCaretPosition(0);
-
-        JScrollPane scroll = new JScrollPane(contenido);
-        scroll.setPreferredSize(new Dimension(480, 420));
-        scroll.setBorder(BorderFactory.createEmptyBorder());
-
-        JButton btnCerrar = new JButton("Cerrar");
-        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 12));
-        panelBoton.add(btnCerrar);
-
-        JPanel panelContenido = new JPanel(new BorderLayout());
-        panelContenido.setBorder(BorderFactory.createEmptyBorder(12, 12, 0, 12));
-        panelContenido.add(scroll, BorderLayout.CENTER);
-        panelContenido.add(panelBoton, BorderLayout.SOUTH);
-
-        JDialog dialogo = new JDialog(this, "Ayuda — Guali Tutor", true);
-        dialogo.setContentPane(panelContenido);
-        btnCerrar.addActionListener(e -> dialogo.dispose());
-        dialogo.getRootPane().setDefaultButton(btnCerrar);
-        dialogo.pack();
-        dialogo.setLocationRelativeTo(this);
-        dialogo.setVisible(true);
-    }
-
     private static JTable crearTablaHistorial(List<RegistroHistorial> registros) {
         DefaultTableModel modelo = new DefaultTableModel(new String[]{"Lección", "Hora de apertura", "Estado"}, 0) {
             @Override
@@ -457,10 +518,55 @@ public class MainForm extends JFrame {
     }
 
     /**
+     * Muestra la ayuda de Guali Tutor: un diálogo modal de solo lectura con una
+     * breve explicación de cada sección de la aplicación. Contenido estático
+     * (HTML_AYUDA), sin depender de datos externos.
+     */
+    public void mostrarAyuda() {
+        JEditorPane contenido = new JEditorPane("text/html", HTML_AYUDA);
+        contenido.setEditable(false);
+        contenido.setCaretPosition(0);
+
+        JScrollPane scroll = new JScrollPane(contenido);
+        scroll.setPreferredSize(new Dimension(480, 420));
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+
+        JButton btnCerrar = new JButton("Cerrar");
+        JPanel panelBoton = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 12));
+        panelBoton.add(btnCerrar);
+
+        JPanel panelContenido = new JPanel(new BorderLayout());
+        panelContenido.setBorder(BorderFactory.createEmptyBorder(12, 12, 0, 12));
+        panelContenido.add(scroll, BorderLayout.CENTER);
+        panelContenido.add(panelBoton, BorderLayout.SOUTH);
+
+        JDialog dialogo = new JDialog(this, "Ayuda — Guali Tutor", true);
+        dialogo.setContentPane(panelContenido);
+        btnCerrar.addActionListener(e -> dialogo.dispose());
+        dialogo.getRootPane().setDefaultButton(btnCerrar);
+        dialogo.pack();
+        dialogo.setLocationRelativeTo(this);
+        dialogo.setVisible(true);
+    }
+
+    /**
      * Actualiza el nombre mostrado en el encabezado de "Lección Activa".
      */
     public void setLeccionActivaTexto(String texto) {
         leccionActivaTxt.setText(texto);
+    }
+
+    /**
+     * Cierra la lección activa a nivel de interfaz: limpia el panel de
+     * contenido, el editor de código y el encabezado de "Lección Activa" (que
+     * queda con el texto "Ninguna lección abierta"). No toca MariaDB ni el
+     * estado de Compilar/Ejecutar/historial; eso lo resuelve MainController.
+     */
+    public void limpiarLeccionActiva() {
+        setBaseLeccion(null);
+        setLeccionMarkdown("");
+        setLeccionActivaTexto(TEXTO_SIN_LECCION_ACTIVA);
+        codigoEditor.setText("");
     }
 
     private void aplicarEstiloMarkdown(StyleSheet hojaEstilos, float tamanoBase) {
@@ -533,13 +639,13 @@ public class MainForm extends JFrame {
 
     {
 // GUI initializer generated by IntelliJ IDEA GUI Designer
-// >>> IMPORTANT!! <
+// >>> IMPORTANT!! <<<
 // DO NOT EDIT OR ADD ANY CODE HERE!
         $$$setupUI$$$();
     }
 
     /** Method generated by IntelliJ IDEA GUI Designer
-     * >>> IMPORTANT!! <
+     * >>> IMPORTANT!! <<<
      * DO NOT edit this method OR call it in your code!
      * @noinspection ALL
      */
@@ -673,49 +779,5 @@ public class MainForm extends JFrame {
     public JComponent $$$getRootComponent$$$() {
         return mainPanel;
     }
-    /** Contenido estático del diálogo de Ayuda; autocontenido (sin depender de leccion-markdown.css). */
-    private static final String HTML_AYUDA = """
-            <html>
-              <head>
-                <style>
-                  body { font-family: sans-serif; font-size: 12px; margin: 4px 10px; }
-                  h1 { font-size: 15px; margin: 0 0 10px 0; }
-                  h2 { font-size: 13px; margin: 14px 0 4px 0; }
-                  ul { margin: 2px 0 0 0; padding-left: 18px; }
-                  li { margin: 2px 0; }
-                  .pie { margin-top: 18px; padding-top: 8px; border-top: 1px solid #999999; color: #555555; font-size: 11px; }
-                </style>
-              </head>
-              <body>
-                <h1>Ayuda — Guali Tutor</h1>
 
-                <h2>Configuración</h2>
-                <ul>
-                  <li>Configura el JDK que utilizará Guali Tutor.</li>
-                  <li>Compilar y Ejecutar permanecerán deshabilitados si no existe un JDK válido.</li>
-                </ul>
-
-                <h2>Lecciones</h2>
-                <ul>
-                  <li>Abre una lección disponible.</li>
-                  <li>Importa, selecciona y elimina lecciones desde MariaDB.</li>
-                </ul>
-
-                <h2>Editor</h2>
-                <ul>
-                  <li>Escribe el código Java.</li>
-                  <li><b>Compilar</b> intenta compilar el código usando el JDK configurado.</li>
-                  <li><b>Ejecutar</b> ejecuta el programa después de una compilación exitosa.</li>
-                </ul>
-
-                <h2>Historial</h2>
-                <ul>
-                  <li>Consulta las aperturas de lecciones.</li>
-                  <li>Ve fecha/hora y estado <i>Pendiente</i> o <i>Completada</i>.</li>
-                </ul>
-
-                <p class="pie">Guali Tutor — Programación II<br>Java 25 · MariaDB · guali-dev</p>
-              </body>
-            </html>
-            """;
 }
