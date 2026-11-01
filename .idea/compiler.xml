@@ -6,6 +6,7 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="guali-tutor-1.0.0" />
         <module name="guali-tutor" />
       </profile>
     </annotationProcessing>

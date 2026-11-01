@@ -44,6 +44,17 @@
       <version>1.0.0</version>
     </dependency>
     <dependency>
+      <!-- JSON para hablar con la API REST (Fase 2). Trae jackson-core y jackson-annotations
+           como dependencias transitivas. El cliente HTTP en sí no necesita dependencia:
+           se usa java.net.http.HttpClient, que ya viene en el JDK. -->
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.22.2</version>
+    </dependency>
+    <dependency>
+      <!-- TEMPORAL: el acceso directo a MariaDB (JDBC) desaparece en la Fase 2. Este driver se
+           elimina al final de la migración, cuando ya no quede ningún DAO con JDBC; hasta entonces
+           la aplicación sigue funcionando como en la Fase 1. -->
       <groupId>org.mariadb.jdbc</groupId>
       <artifactId>mariadb-java-client</artifactId>
       <version>3.5.10</version>
